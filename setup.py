@@ -282,6 +282,30 @@ def read_readme() -> str:
         return ""
 
 
+BASE_DEPENDENCIES = [
+    "psutil",
+    "numpy",
+    "transformers >= 4.36.0",  # Required for Mixtral.
+    "sentencepiece",  # Required for LLaMA tokenizer.
+]
+RAY_DEPENDENCIES = [
+    "ray >= 2.5.1",
+    "pandas",  # Unused but required by Ray AIR.
+    "pyarrow",  # Unused but required by Ray AIR.
+]
+SERVER_REQUIREMENTS = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic == 1.10.13",  # Required for OpenAI server.
+    "aioprometheus[starlette]",
+]
+EXTRA_REQUIRES = {
+    "cu121": ["torch >= 2.1.2", "xformers == 0.0.23"],
+    "cu118": ["torch >= 2.1.2", "xformers == 0.0.23"],
+    "rocm": ["torch >= 2.1.2", "xformers == 0.0.23"],
+}
+
+
 def get_requirements() -> List[str]:
     """Get Python package dependencies from requirements.txt."""
     if _is_hip():
