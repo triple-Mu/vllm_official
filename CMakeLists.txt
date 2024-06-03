@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.21)
 
 project(vllm_extensions LANGUAGES CXX)
 
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+        set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+        set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
+endif(CCACHE_FOUND)
+
 option(VLLM_TARGET_DEVICE "Target device backend for vLLM" "cuda")
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
