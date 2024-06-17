@@ -54,12 +54,12 @@ from vllm.sequence import SamplerOutput
 class DeepseekV2MLP(nn.Module):
 
     def __init__(
-        self,
-        hidden_size: int,
-        intermediate_size: int,
-        hidden_act: str,
-        quant_config: Optional[QuantizationConfig] = None,
-        reduce_results: bool = True,
+            self,
+            hidden_size: int,
+            intermediate_size: int,
+            hidden_act: str,
+            quant_config: Optional[QuantizationConfig] = None,
+            reduce_results: bool = True,
     ) -> None:
         super().__init__()
         self.gate_up_proj = MergedColumnParallelLinear(
@@ -86,9 +86,9 @@ class DeepseekV2MLP(nn.Module):
 class DeepseekV2MoE(nn.Module):
 
     def __init__(
-        self,
-        config: PretrainedConfig,
-        quant_config: Optional[QuantizationConfig] = None,
+            self,
+            config: PretrainedConfig,
+            quant_config: Optional[QuantizationConfig] = None,
     ):
         super().__init__()
         self.config = config
@@ -186,21 +186,21 @@ def yarn_get_mscale(scale: float = 1, mscale: float = 1) -> float:
 class DeepseekV2Attention(nn.Module):
 
     def __init__(
-        self,
-        config: PretrainedConfig,
-        hidden_size: int,
-        num_heads: int,
-        qk_nope_head_dim: int,
-        qk_rope_head_dim: int,
-        v_head_dim: int,
-        q_lora_rank: int,
-        kv_lora_rank: int,
-        rope_theta: float = 10000,
-        rope_scaling: Optional[Dict[str, Any]] = None,
-        max_position_embeddings: int = 8192,
-        cache_config: Optional[CacheConfig] = None,
-        quant_config: Optional[QuantizationConfig] = None,
-        layer_idx=None,
+            self,
+            config: PretrainedConfig,
+            hidden_size: int,
+            num_heads: int,
+            qk_nope_head_dim: int,
+            qk_rope_head_dim: int,
+            v_head_dim: int,
+            q_lora_rank: int,
+            kv_lora_rank: int,
+            rope_theta: float = 10000,
+            rope_scaling: Optional[Dict[str, Any]] = None,
+            max_position_embeddings: int = 8192,
+            cache_config: Optional[CacheConfig] = None,
+            quant_config: Optional[QuantizationConfig] = None,
+            layer_idx=None,
     ) -> None:
         super().__init__()
         self.layer_idx = layer_idx
@@ -215,7 +215,7 @@ class DeepseekV2Attention(nn.Module):
         tp_size = get_tensor_model_parallel_world_size()
         assert num_heads % tp_size == 0
         self.num_local_heads = num_heads // tp_size
-        self.scaling = self.qk_head_dim**-0.5
+        self.scaling = self.qk_head_dim ** -0.5
         self.rope_theta = rope_theta
         self.max_position_embeddings = max_position_embeddings
 
@@ -283,11 +283,11 @@ class DeepseekV2Attention(nn.Module):
                               quant_config=quant_config)
 
     def forward(
-        self,
-        positions: torch.Tensor,
-        hidden_states: torch.Tensor,
-        kv_cache: torch.Tensor,
-        attn_metadata: AttentionMetadata,
+            self,
+            positions: torch.Tensor,
+            hidden_states: torch.Tensor,
+            kv_cache: torch.Tensor,
+            attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
         if self.q_lora_rank is not None:
             q = self.q_a_proj(hidden_states)[0]
@@ -326,7 +326,7 @@ class DeepseekV2Attention(nn.Module):
         attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
         attn_output = attn_output.view(
             -1, self.num_local_heads, 256)[..., :self.v_head_dim].reshape(
-                -1, self.num_local_heads * self.v_head_dim)
+            -1, self.num_local_heads * self.v_head_dim)
         output, _ = self.o_proj(attn_output)
         return output
 
@@ -334,11 +334,11 @@ class DeepseekV2Attention(nn.Module):
 class DeepseekV2DecoderLayer(nn.Module):
 
     def __init__(
-        self,
-        config: PretrainedConfig,
-        layer_idx: int,
-        cache_config: Optional[CacheConfig] = None,
-        quant_config: Optional[QuantizationConfig] = None,
+            self,
+            config: PretrainedConfig,
+            layer_idx: int,
+            cache_config: Optional[CacheConfig] = None,
+            quant_config: Optional[QuantizationConfig] = None,
     ) -> None:
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -380,12 +380,12 @@ class DeepseekV2DecoderLayer(nn.Module):
                                                 eps=config.rms_norm_eps)
 
     def forward(
-        self,
-        positions: torch.Tensor,
-        hidden_states: torch.Tensor,
-        kv_cache: torch.Tensor,
-        attn_metadata: AttentionMetadata,
-        residual: Optional[torch.Tensor],
+            self,
+            positions: torch.Tensor,
+            hidden_states: torch.Tensor,
+            kv_cache: torch.Tensor,
+            attn_metadata: AttentionMetadata,
+            residual: Optional[torch.Tensor],
     ) -> torch.Tensor:
         # Self Attention
         if residual is None:
@@ -409,15 +409,14 @@ class DeepseekV2DecoderLayer(nn.Module):
 
 
 class DeepseekV2Model(nn.Module):
-
     fall_back_to_pt_during_load = False
 
     def __init__(
-        self,
-        config: PretrainedConfig,
-        cache_config: Optional[CacheConfig] = None,
-        quant_config: Optional[QuantizationConfig] = None,
-        lora_config: Optional[LoRAConfig] = None,
+            self,
+            config: PretrainedConfig,
+            cache_config: Optional[CacheConfig] = None,
+            quant_config: Optional[QuantizationConfig] = None,
+            lora_config: Optional[LoRAConfig] = None,
     ) -> None:
         super().__init__()
         assert lora_config is None, "vllm do not support lora_config in DeepseekV2Model"
@@ -438,11 +437,11 @@ class DeepseekV2Model(nn.Module):
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
-        self,
-        input_ids: torch.Tensor,
-        positions: torch.Tensor,
-        kv_caches: List[torch.Tensor],
-        attn_metadata: AttentionMetadata,
+            self,
+            input_ids: torch.Tensor,
+            positions: torch.Tensor,
+            kv_caches: List[torch.Tensor],
+            attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
         hidden_states = self.embed_tokens(input_ids)
         residual = None
@@ -458,11 +457,11 @@ class DeepseekV2Model(nn.Module):
 class DeepseekV2ForCausalLM(nn.Module):
 
     def __init__(
-        self,
-        config: PretrainedConfig,
-        cache_config: Optional[CacheConfig] = None,
-        quant_config: Optional[QuantizationConfig] = None,
-        lora_config: Optional[LoRAConfig] = None,
+            self,
+            config: PretrainedConfig,
+            cache_config: Optional[CacheConfig] = None,
+            quant_config: Optional[QuantizationConfig] = None,
+            lora_config: Optional[LoRAConfig] = None,
     ) -> None:
         super().__init__()
         self.config = config
@@ -473,11 +472,11 @@ class DeepseekV2ForCausalLM(nn.Module):
         self.sampler = Sampler()
 
     def forward(
-        self,
-        input_ids: torch.Tensor,
-        positions: torch.Tensor,
-        kv_caches: List[torch.Tensor],
-        attn_metadata: AttentionMetadata,
+            self,
+            input_ids: torch.Tensor,
+            positions: torch.Tensor,
+            kv_caches: List[torch.Tensor],
+            attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
         hidden_states = self.model(input_ids, positions, kv_caches,
                                    attn_metadata)
@@ -490,9 +489,9 @@ class DeepseekV2ForCausalLM(nn.Module):
         return logits
 
     def sample(
-        self,
-        logits: Optional[torch.Tensor],
-        sampling_metadata: SamplingMetadata,
+            self,
+            logits: Optional[torch.Tensor],
+            sampling_metadata: SamplingMetadata,
     ) -> Optional[SamplerOutput]:
         next_tokens = self.sampler(logits, sampling_metadata)
         return next_tokens
@@ -505,9 +504,11 @@ class DeepseekV2ForCausalLM(nn.Module):
         ]
 
         params_dict = dict(self.named_parameters())
-        for name, loaded_weight in weights:
+
+        def _load_fn(name, loaded_weight):
             if "rotary_emb.inv_freq" in name:
-                continue
+                return
+
             for (param_name, weight_name, shard_id) in stacked_params_mapping:
                 if weight_name not in name:
                     continue
@@ -526,12 +527,22 @@ class DeepseekV2ForCausalLM(nn.Module):
             else:
                 # Skip loading extra bias for GPTQ models.
                 if name.endswith(".bias") and name not in params_dict:
-                    continue
+                    return
                 # Skip experts that are not assigned to this worker.
                 if (("mlp.experts." in name or "mlp.shared_experts." in name)
                         and name not in params_dict):
-                    continue
+                    return
                 param = params_dict[name]
                 weight_loader = getattr(param, "weight_loader",
                                         default_weight_loader)
                 weight_loader(param, loaded_weight)
+
+        from threading import Thread
+        threads = []
+
+        for name, loaded_weight in weights:
+            t = Thread(target=_load_fn, args=(name, loaded_weight))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
