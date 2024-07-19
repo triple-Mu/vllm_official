@@ -518,23 +518,24 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
         self.graph_block_tables = np.zeros(
             (max(_BATCH_SIZES_TO_CAPTURE), self.get_max_block_per_batch()),
             dtype=np.int32)
-        num_attn_heads = self.model_config.get_num_attention_heads(
-            self.parallel_config)
-        self.attn_backend = get_attn_backend(
-            num_attn_heads,
-            self.model_config.get_head_size(),
-            self.model_config.get_num_kv_heads(self.parallel_config),
-            self.model_config.get_sliding_window(),
-            self.model_config.dtype,
-            self.kv_cache_dtype,
-            self.block_size,
-        ) if num_attn_heads else None
+        # num_attn_heads = self.model_config.get_num_attention_heads(
+        #     self.parallel_config)
+        # self.attn_backend = get_attn_backend(
+        #     num_attn_heads,
+        #     self.model_config.get_head_size(),
+        #     self.model_config.get_num_kv_heads(self.parallel_config),
+        #     self.model_config.get_sliding_window(),
+        #     self.model_config.dtype,
+        #     self.kv_cache_dtype,
+        #     self.block_size,
+        # ) if num_attn_heads else None
 
         # Multi-modal data support
         self.multi_modal_input_mapper = MULTIMODAL_REGISTRY \
             .create_input_mapper(self.model_config)
 
         # Lazy initialization
+        self.attn_backend: Type[AttentionBackend]
         self.model: nn.Module  # Set after load_model
         # Set after load_model.
         self.lora_manager: Optional[LRUCacheWorkerLoRAManager] = None
@@ -549,6 +550,17 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
             int(self.cache_config.cpu_offload_gb * 1024**3))
 
     def load_model(self) -> None:
+        num_attn_heads = self.model_config.get_num_attention_heads(
+            self.parallel_config)
+        self.attn_backend = get_attn_backend(
+            num_attn_heads,
+            self.model_config.get_head_size(),
+            self.model_config.get_num_kv_heads(self.parallel_config),
+            self.model_config.get_sliding_window(),
+            self.model_config.dtype,
+            self.kv_cache_dtype,
+            self.block_size,
+        ) if num_attn_heads else None
         with CudaMemoryProfiler() as m:
             self.model = get_model(model_config=self.model_config,
                                    device_config=self.device_config,

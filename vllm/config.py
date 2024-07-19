@@ -13,7 +13,8 @@ from vllm.tracing import is_otel_installed
 from vllm.transformers_utils.config import get_config, get_hf_text_config
 from vllm.utils import (cuda_device_count_stateless, get_cpu_memory, is_cpu,
                         is_hip, is_neuron, is_openvino, is_tpu, is_xpu,
-                        print_warning_once)
+                        print_warning_once, partition_number)
+from vllm.distributed import get_tensor_model_parallel_rank
 
 if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
@@ -271,10 +272,13 @@ class ModelConfig:
                                             "num_attention_heads", 0)
         tensor_parallel_size = parallel_config.tensor_parallel_size
         if total_num_attention_heads % tensor_parallel_size != 0:
-            raise ValueError(
+            logger.warning(
                 f"Total number of attention heads ({total_num_attention_heads})"
-                " must be divisible by tensor parallel size "
-                f"({tensor_parallel_size}).")
+                " can not be divisible by tensor parallel size "
+                f"({tensor_parallel_size}).\n"
+                f"So use the uneven tensor parallel with: "
+                f"{partition_number(total_num_attention_heads, tensor_parallel_size).tolist()}"
+            )
 
         pipeline_parallel_size = parallel_config.pipeline_parallel_size
         architectures = getattr(self.hf_config, "architectures", [])
@@ -379,13 +383,19 @@ class ModelConfig:
         # the tensor parallel size. We will replicate the KV heads in the
         # case where the number of KV heads is smaller than the tensor
         # parallel size so each GPU has at least one KV head.
-        return max(1,
-                   total_num_kv_heads // parallel_config.tensor_parallel_size)
+        tp_rank = get_tensor_model_parallel_rank()
+        tp_size = partition_number(
+            total_num_kv_heads,
+            parallel_config.tensor_parallel_size)[tp_rank].item()
+        return max(1, tp_size)
 
     def get_num_attention_heads(self,
                                 parallel_config: "ParallelConfig") -> int:
-        num_heads = getattr(self.hf_text_config, "num_attention_heads", 0)
-        return num_heads // parallel_config.tensor_parallel_size
+        tp_rank = get_tensor_model_parallel_rank()
+        tp_size = partition_number(
+            self.hf_text_config.num_attention_heads,
+            parallel_config.tensor_parallel_size)[tp_rank].item()
+        return tp_size
 
     def get_num_layers(self, parallel_config: "ParallelConfig") -> int:
         from vllm.distributed.utils import get_pp_indices
