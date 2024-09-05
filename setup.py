@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import math
 from pathlib import Path
 from shutil import which
 from typing import Dict, List
@@ -98,7 +99,10 @@ class cmake_build_ext(build_ext):
                     nvcc_threads)
             else:
                 nvcc_threads = 1
-            num_jobs = max(1, num_jobs // nvcc_threads)
+
+            if ratio := (num_jobs + nvcc_threads) / os.cpu_count() >= 1:
+                num_jobs = math.ceil(num_jobs / ratio)
+                nvcc_threads = math.ceil(nvcc_threads / ratio)
 
         return num_jobs, nvcc_threads
 
