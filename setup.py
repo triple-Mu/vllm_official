@@ -104,7 +104,7 @@ class cmake_build_ext(build_ext):
                 num_jobs = math.ceil(num_jobs / ratio)
                 nvcc_threads = math.ceil(nvcc_threads / ratio)
 
-        return num_jobs, nvcc_threads
+        return num_jobs, 2
 
     #
     # Perform cmake configuration for a single extension.
