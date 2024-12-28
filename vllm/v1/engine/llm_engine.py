@@ -72,11 +72,11 @@ class LLMEngine:
 
         # EngineCore (gets EngineCoreRequests and gives EngineCoreOutputs)
         self.engine_core = EngineCoreClient.make_client(
-            vllm_config,
-            executor_class,
-            usage_context,
             multiprocess_mode=multiprocess_mode,
             asyncio_mode=False,
+            vllm_config=vllm_config,
+            executor_class=executor_class,
+            log_stats=False,
         )
 
     @classmethod
@@ -110,7 +110,10 @@ class LLMEngine:
         executor_class: Type[Executor]
         distributed_executor_backend = (
             vllm_config.parallel_config.distributed_executor_backend)
-        if distributed_executor_backend == "mp":
+        if distributed_executor_backend == "ray":
+            from vllm.v1.executor.ray_executor import RayExecutor
+            executor_class = RayExecutor
+        elif distributed_executor_backend == "mp":
             from vllm.v1.executor.multiproc_executor import MultiprocExecutor
             executor_class = MultiprocExecutor
         else:
