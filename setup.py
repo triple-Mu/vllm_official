@@ -10,7 +10,6 @@ import sys
 import math
 from pathlib import Path
 from shutil import which
-from typing import Dict, List
 
 import torch
 from packaging.version import Version, parse
@@ -79,7 +78,7 @@ class CMakeExtension(Extension):
 
 class cmake_build_ext(build_ext):
     # A dict of extension directories that have been configured.
-    did_config: Dict[str, bool] = {}
+    did_config: dict[str, bool] = {}
 
     #
     # Determine number of compilation jobs and optionally nvcc compile threads.
@@ -553,10 +552,10 @@ def get_vllm_version() -> str:
     return version
 
 
-def get_requirements() -> List[str]:
+def get_requirements() -> list[str]:
     """Get Python package dependencies from requirements.txt."""
 
-    def _read_requirements(filename: str) -> List[str]:
+    def _read_requirements(filename: str) -> list[str]:
         with open(get_path(filename)) as f:
             requirements = f.read().strip().split("\n")
         resolved_requirements = []
