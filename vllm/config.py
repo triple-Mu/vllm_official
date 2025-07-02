@@ -18,7 +18,7 @@ from functools import cached_property
 from importlib.util import find_spec
 from pathlib import Path
 from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Literal, Optional,
-                    Protocol, TypeVar, Union, cast, get_args, get_origin)
+                    Protocol, TypeVar, Union, cast, get_args)
 
 import regex as re
 import torch
@@ -193,28 +193,10 @@ def config(cls: ConfigT) -> ConfigT:
     (i.e. `ConfigT(**json.loads(cli_arg))`). However, if a particular `ConfigT`
     requires custom construction from CLI (i.e. `CompilationConfig`), it can
     have a `from_cli` method, which will be called instead.
+
+    Config validation is performed by the tools/validate_config.py
+    script, which is invoked during the pre-commit checks.
     """
-    if not is_dataclass(cls):
-        raise TypeError("The decorated class must be a dataclass.")
-    attr_docs = get_attr_docs(cls)
-    for f in fields(cls):
-        if f.init and f.default is MISSING and f.default_factory is MISSING:
-            raise ValueError(
-                f"Field '{f.name}' in {cls.__name__} must have a default value."
-            )
-
-        if f.name not in attr_docs:
-            raise ValueError(
-                f"Field '{f.name}' in {cls.__name__} must have a docstring.")
-
-        if get_origin(f.type) is Union:
-            args = get_args(f.type)
-            literal_args = [arg for arg in args if get_origin(arg) is Literal]
-            if len(literal_args) > 1:
-                raise ValueError(
-                    f"Field '{f.name}' in {cls.__name__} must use a single "
-                    "Literal type. Please use 'Literal[Literal1, Literal2]' "
-                    "instead of 'Union[Literal1, Literal2]'.")
     return cls
 
 
@@ -364,6 +346,12 @@ class ModelConfig:
     limit_mm_per_prompt: dict[str, int] = field(default_factory=dict)
     """Maximum number of data items per modality per prompt. Only applicable
     for multimodal models."""
+    media_io_kwargs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """Additional args passed to process media inputs, keyed by modalities. 
+    For example, to set num_frames for video, set 
+    `--media-io-kwargs '{"video": {"num_frames": 40} }'` """
+    mm_placeholder_str_override: dict[str, str] = field(default_factory=dict)
+    """Optionally override placeholder string for given modalities."""
     use_async_output_proc: bool = True
     """Whether to use async output processor."""
     config_format: Union[str, ConfigFormat] = ConfigFormat.AUTO.value
@@ -712,6 +700,8 @@ class ModelConfig:
         if self.registry.is_multimodal_model(self.architectures):
             return MultiModalConfig(
                 limit_per_prompt=self.limit_mm_per_prompt,
+                media_io_kwargs=self.media_io_kwargs,
+                mm_placeholder_str_override=self.mm_placeholder_str_override,
                 mm_processor_kwargs=self.mm_processor_kwargs,
                 disable_mm_preprocessor_cache=self.
                 disable_mm_preprocessor_cache)
@@ -1452,10 +1442,17 @@ class ModelConfig:
         return getattr(self.hf_config, "matryoshka_dimensions", None)
 
     def get_and_verify_max_len(self, max_model_len: int):
-        tokenizer_config = try_get_tokenizer_config(
-            self.tokenizer,
-            trust_remote_code=self.trust_remote_code,
-            revision=self.tokenizer_revision)
+        # For pooling models, the tokenizer's `model_max_length` is often a
+        # reliable source for the maximum sequence length. However, for
+        # generative models, this can be incorrect and unduly limit the
+        # context window (e.g., DeepSeek-R1). Therefore, we only consider
+        # tokenizer_config for pooling models.
+        tokenizer_config = None
+        if self.runner_type == "pooling":
+            tokenizer_config = try_get_tokenizer_config(
+                self.tokenizer,
+                trust_remote_code=self.trust_remote_code,
+                revision=self.tokenizer_revision)
         max_model_len = _get_and_verify_max_len(
             hf_config=self.hf_text_config,
             tokenizer_config=tokenizer_config,
@@ -1798,7 +1795,7 @@ class ParallelConfig:
     eplb_step_interval: int = 3000
     """
     Interval for rearranging experts in expert parallelism.
-    
+
     Note that if this is greater than the EPLB window size, only the metrics
     of the last `eplb_window_size` steps will be used for rearranging experts.
     """
@@ -3081,6 +3078,14 @@ class MultiModalConfig:
     `{"images": 16, "videos": 2}`
     """
 
+    media_io_kwargs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """Additional args passed to process media inputs, keyed by modalities. 
+    For example, to set num_frames for video, set 
+    `--media-io-kwargs '{"video": {"num_frames": 40} }'` """
+
+    mm_placeholder_str_override: dict[str, str] = field(default_factory=dict)
+    """Optionally override placeholder string for given modalities."""
+
     mm_processor_kwargs: Optional[dict[str, object]] = None
     """
     Overrides for the multi-modal processor obtained from
@@ -4140,9 +4145,9 @@ class CompilationConfig:
 
     @classmethod
     def from_cli(cls, cli_value: str) -> "CompilationConfig":
-        """Parse the CLI value for the compilation config."""
-        if cli_value in ["0", "1", "2", "3"]:
-            return cls(level=int(cli_value))
+        """Parse the CLI value for the compilation config.
+        -O1, -O2, -O3, etc. is handled in FlexibleArgumentParser.
+        """
         return TypeAdapter(CompilationConfig).validate_json(cli_value)
 
     def __post_init__(self) -> None:
@@ -4303,17 +4308,16 @@ class VllmConfig:
     """Quantization configuration."""
     compilation_config: CompilationConfig = field(
         default_factory=CompilationConfig)
-    """`torch.compile` configuration for the model.
+    """`torch.compile` and cudagraph capture configuration for the model.
 
-    When it is a number (0, 1, 2, 3), it will be interpreted as the
-    optimization level.
+    As a shorthand, `-O<n>` can be used to directly specify the compilation
+    level `n`: `-O3` is equivalent to `-O.level=3` (same as `-O='{"level":3}'`).
+    Currently, -O <n> and -O=<n> are supported as well but this will likely be 
+    removed in favor of clearer -O<n> syntax in the future.
 
     NOTE: level 0 is the default level without any optimization. level 1 and 2
     are for internal testing only. level 3 is the recommended level for
-    production.
-
-    Following the convention of traditional compilers, using `-O` without space
-    is also supported. `-O3` is equivalent to `-O 3`.
+    production, also default in V1.
 
     You can specify the full compilation config like so:
     `{"level": 3, "cudagraph_capture_sizes": [1, 2, 4, 8]}`

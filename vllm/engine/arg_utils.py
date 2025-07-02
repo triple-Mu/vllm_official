@@ -202,7 +202,10 @@ def _compute_kwargs(cls: ConfigType) -> dict[str, Any]:
         passed individually. For example, the following sets of arguments are
         equivalent:\n\n
         - `--json-arg '{"key1": "value1", "key2": {"key3": "value2"}}'`\n
-        - `--json-arg.key1 value1 --json-arg.key2.key3 value2`\n\n"""
+        - `--json-arg.key1 value1 --json-arg.key2.key3 value2`\n
+        Additionally, list elements can be passed individually using '+':
+        - `--json-arg '{"key4": ["value3", "value4", "value5"]}'`\n
+        - `--json-arg.key4+ value3 --json-arg.key4+='value4,value5'`\n\n"""
         if dataclass_cls is not None:
 
             def parse_dataclass(val: str, cls=dataclass_cls) -> Any:
@@ -366,6 +369,11 @@ class EngineArgs:
         get_field(TokenizerPoolConfig, "extra_config")
     limit_mm_per_prompt: dict[str, int] = \
         get_field(MultiModalConfig, "limit_per_prompt")
+    media_io_kwargs: dict[str, dict[str,
+                                    Any]] = get_field(MultiModalConfig,
+                                                      "media_io_kwargs")
+    mm_placeholder_str_override: dict[str, str] = \
+        get_field(MultiModalConfig, "mm_placeholder_str_override")
     mm_processor_kwargs: Optional[Dict[str, Any]] = \
         MultiModalConfig.mm_processor_kwargs
     disable_mm_preprocessor_cache: bool = \
@@ -742,6 +750,11 @@ class EngineArgs:
         )
         multimodal_group.add_argument("--limit-mm-per-prompt",
                                       **multimodal_kwargs["limit_per_prompt"])
+        multimodal_group.add_argument("--media-io-kwargs",
+                                      **multimodal_kwargs["media_io_kwargs"])
+        multimodal_group.add_argument(
+            "--mm-placeholder-str-override",
+            **multimodal_kwargs["mm_placeholder_str_override"])
         multimodal_group.add_argument(
             "--mm-processor-kwargs",
             **multimodal_kwargs["mm_processor_kwargs"])
@@ -966,6 +979,8 @@ class EngineArgs:
             enable_prompt_embeds=self.enable_prompt_embeds,
             served_model_name=self.served_model_name,
             limit_mm_per_prompt=self.limit_mm_per_prompt,
+            media_io_kwargs=self.media_io_kwargs,
+            mm_placeholder_str_override=self.mm_placeholder_str_override,
             use_async_output_proc=not self.disable_async_output_proc,
             config_format=self.config_format,
             mm_processor_kwargs=self.mm_processor_kwargs,
